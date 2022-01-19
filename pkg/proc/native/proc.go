@@ -253,6 +253,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		//    look like the breakpoint was hit twice when it was "logically" only
 		//    executed once.
 		//    See: https://go-review.googlesource.com/c/go/+/208126
+		// TODO(alexsaezm) Verify if I need to disable it for ppc64le too
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
 		StopReason:   stopReason,
@@ -262,6 +263,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	if err != nil {
 		return nil, err
 	}
+	// TODO(alexsaezm) Verify if I need to run IsCgo for ppc64le too
 	if dbp.bi.Arch.Name == "arm64" {
 		dbp.iscgo = tgt.IsCgo()
 	}

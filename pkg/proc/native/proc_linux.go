@@ -414,9 +414,9 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			// Sometimes we get an unknown thread, ignore it?
 			continue
 		}
-		if (halt && status.StopSignal() == sys.SIGSTOP) || (status.StopSignal() == sys.SIGTRAP) {
+		if (halt && status.StopSignal() == sys.SIGSTOP) || (status.StopSignal() == sys.SIGTRAP) || (status.StopSignal() == sys.SIGSEGV) {
 			th.os.running = false
-			if status.StopSignal() == sys.SIGTRAP {
+			if status.StopSignal() == sys.SIGTRAP || status.StopSignal() == sys.SIGSEGV {
 				th.os.setbp = true
 			}
 			return th, nil
