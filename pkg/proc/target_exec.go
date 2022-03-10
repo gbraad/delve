@@ -35,6 +35,7 @@ func (dbp *Target) Next() (err error) {
 		return fmt.Errorf("next while nexting")
 	}
 
+	fmt.Println("foo")
 	if err = next(dbp, false, false); err != nil {
 		dbp.ClearSteppingBreakpoints()
 		return
