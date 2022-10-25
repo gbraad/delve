@@ -3453,10 +3453,10 @@ func TestCgoStacktrace(t *testing.T) {
 				}
 			}
 
+			t.Logf("iteration step %d", itidx)
 			frames, err := g.Stacktrace(100, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
-			t.Logf("iteration step %d", itidx)
 			logStacktrace(t, p, frames)
 
 			m := stacktraceCheck(t, tc, frames)
@@ -3828,9 +3828,8 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 	if frame.Inlined != inlined {
 		if inlined {
 			return fmt.Errorf("not inlined")
-		} else {
-			return fmt.Errorf("inlined")
 		}
+		return fmt.Errorf("inlined")
 	}
 	return nil
 }

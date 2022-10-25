@@ -8,6 +8,8 @@
 #define BREAKPOINT asm("int3;")
 #elif __aarch64__
 #define BREAKPOINT asm("brk 0;")
+#elif __PPC64__
+#define BREAKPOINT asm("tw 31,0,0;")
 #endif
 
 void helloworld_pt2(int x) {
