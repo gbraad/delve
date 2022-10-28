@@ -3321,7 +3321,11 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
 		}
 
-		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+		t.Logf("\t%#x %#x %#x %s at %s:%d\n",
+			frames[j].Call.PC,
+			frames[j].FrameOffset(),
+			frames[j].FramePointerOffset(),
+			name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
 		if frames[j].TopmostDefer != nil {
 			_, _, fn := frames[j].TopmostDefer.DeferredFunc(p)
 			fnname := ""
@@ -3414,6 +3418,7 @@ func TestCgoStacktrace(t *testing.T) {
 
 	skipOn(t, "broken - cgo stacktraces", "386")
 	skipOn(t, "broken - cgo stacktraces", "linux", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
