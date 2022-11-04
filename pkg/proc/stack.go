@@ -224,6 +224,7 @@ func (it *stackIterator) Next() bool {
 		return true
 	}
 
+	// fmt.Printf("it.frame.Ret: %#v\n", it.frame.Ret)
 	it.top = false
 	it.pc = it.frame.Ret
 	it.regs = callFrameRegs
@@ -441,6 +442,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
+	// fmt.Printf("advance regs: it.pc: %#x ret: %#x retaddr: %x\n", it.pc, ret, retaddr)
 	return callFrameRegs, ret, retaddr
 }
 

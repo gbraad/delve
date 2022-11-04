@@ -3321,7 +3321,9 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
 		}
 
-		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+		t.Logf("\t%#x %#x %#x %s at %s:%d\n",
+			frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(),
+			name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
 		if frames[j].TopmostDefer != nil {
 			_, _, fn := frames[j].TopmostDefer.DeferredFunc(p)
 			fnname := ""
@@ -3337,7 +3339,6 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 				fnname = fn.Name
 			}
 			t.Logf("\t\t%d defer: %#x %s\n", deferIdx, _defer.DwrapPC, fnname)
-
 		}
 	}
 }
@@ -3413,7 +3414,6 @@ func TestCgoStacktrace(t *testing.T) {
 	}
 
 	skipOn(t, "broken - cgo stacktraces", "386")
-	skipOn(t, "broken - cgo stacktraces", "linux", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
@@ -3440,6 +3440,8 @@ func TestCgoStacktrace(t *testing.T) {
 
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
 		for itidx, tc := range testCases {
+			t.Logf("iteration step %d", itidx)
+
 			assertNoError(p.Continue(), t, fmt.Sprintf("Continue at iteration step %d", itidx))
 
 			g, err := proc.GetG(p.CurrentThread())
@@ -3456,7 +3458,6 @@ func TestCgoStacktrace(t *testing.T) {
 			frames, err := g.Stacktrace(100, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
-			t.Logf("iteration step %d", itidx)
 			logStacktrace(t, p, frames)
 
 			m := stacktraceCheck(t, tc, frames)
@@ -3475,7 +3476,7 @@ func TestCgoStacktrace(t *testing.T) {
 						t.Logf("frame %s offset mismatch", tc[i])
 					}
 					if framePointerOffs[tc[i]] != frames[j].FramePointerOffset() {
-						t.Logf("frame %s pointer offset mismatch", tc[i])
+						t.Logf("frame %s pointer offset mismatch, expected: %#v actual: %#v", tc[i], framePointerOffs[tc[i]], frames[j].FramePointerOffset())
 					}
 				} else {
 					frameOffs[tc[i]] = frames[j].FrameOffset()
@@ -3828,9 +3829,8 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 	if frame.Inlined != inlined {
 		if inlined {
 			return fmt.Errorf("not inlined")
-		} else {
-			return fmt.Errorf("inlined")
 		}
+		return fmt.Errorf("inlined")
 	}
 	return nil
 }

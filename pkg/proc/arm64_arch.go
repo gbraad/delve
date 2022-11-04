@@ -82,7 +82,7 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: regnum.ARM64_PC,
+			RetAddrReg: regnum.ARM64_LR,
 			Regs: map[uint64]frame.DWRule{
 				regnum.ARM64_PC: frame.DWRule{
 					Rule:   frame.RuleOffset,
@@ -107,14 +107,6 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 
 	if a.crosscall2fn == nil {
 		a.crosscall2fn = bi.LookupFunc["crosscall2"]
-	}
-
-	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
-		rule := fctxt.CFA
-		if rule.Offset == crosscall2SPOffsetBad {
-			rule.Offset += crosscall2SPOffset
-		}
-		fctxt.CFA = rule
 	}
 
 	// We assume that RBP is the frame pointer and we want to keep it updated,
@@ -143,52 +135,99 @@ const arm64cgocallSPOffsetSaveSlot = 0x8
 const prevG0schedSPOffsetSaveSlot = 0x10
 
 func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
-	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
-		it.switchToGoroutineStack()
-		return true
+	if it.frame.Current.Fn == nil {
+		if it.systemstack && it.g != nil && it.top {
+			it.switchToGoroutineStack()
+			return true
+		}
+		return false
 	}
-	if it.frame.Current.Fn != nil {
-		switch it.frame.Current.Fn.Name {
-		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":
-			//do nothing
-		case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
-			// Look for "top of stack" functions.
-			it.atend = true
+	// fmt.Println("current function:", it.frame.Current.Fn.Name)
+	switch it.frame.Current.Fn.Name {
+	case "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":
+	case "runtime.asmcgocall":
+		// fmt.Println("asmcgocall")
+		if it.top || !it.systemstack {
+			// fmt.Println("returning false")
+			return false
+		}
+
+		// This function is called by a goroutine to execute a C function and
+		// switches from the goroutine stack to the system stack.
+		// Since we are unwinding the stack from callee to caller we have to switch
+		// from the system stack to the goroutine stack.
+		off, _ := readIntRaw(it.mem, uint64(it.regs.SP()+arm64cgocallSPOffsetSaveSlot),
+			int64(it.bi.Arch.PtrSize()))
+		oldsp := it.regs.SP()
+		newsp := uint64(int64(it.stackhi) - off)
+		// if off > 0x4000040000 {
+		// newsp = uint64(off)
+		// }
+
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(int64(newsp))
+		// runtime.asmcgocall can also be called from inside the system stack,
+		// in that case no stack switch actually happens
+		if it.regs.SP() == oldsp {
+			return false
+		}
+		// TODO(derekparker): why is newsp incorrect here?
+		// fmt.Printf("curfn ::: oldsp: %#v newsp: %#v, it.stackhi: %#v, off: %#v\n",
+		// 	oldsp, newsp, it.stackhi, uint64(off))
+
+		// it.top = false
+		// it.systemstack = false
+		it.switchToGoroutineStack()
+
+		// Advance to next frame in the stack.
+		// it.frame.addrret = uint64(int64(it.regs.SP()))
+		// it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		// it.pc = it.frame.Ret
+		// fmt.Printf("curfn it.frame.Ret: %#v\n", it.frame.Ret)
+
+		return true
+		// fmt.Println("switching to systemstack:", it.frame.Current.Fn.Name)
+		// newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8), int64(it.bi.Arch.PtrSize()))
+		// fmt.Printf("newsp: %#x\n", newsp)
+		// it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+		// it.systemstack = false
+		// return true
+	case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
+		// Look for "top of stack" functions.
+		it.atend = true
+		return true
+	case "crosscall2":
+		//The offsets get from runtime/cgo/asm_arm64.s:10
+		bpoff := uint64(14)
+		lroff := uint64(15)
+		if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {
+			// In Go 1.19 (specifically eee6f9f82) the order registers are saved was changed.
+			bpoff = 22
+			lroff = 23
+		}
+		newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
+		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
+		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
+		if it.regs.Reg(it.regs.BPRegNum) != nil {
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
+		} else {
+			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
+			it.regs.AddReg(it.regs.BPRegNum, reg)
+		}
+		it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+		it.pc = newlr
+		return true
+	default:
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+			// The runtime switches to the system stack in multiple places.
+			// This usually happens through a call to runtime.systemstack but there
+			// are functions that switch to the system stack manually (for example
+			// runtime.morestack).
+			// Since we are only interested in printing the system stack for cgo
+			// calls we switch directly to the goroutine stack if we detect that the
+			// function at the top of the stack is a runtime function.
+			it.switchToGoroutineStack()
 			return true
-		case "crosscall2":
-			//The offsets get from runtime/cgo/asm_arm64.s:10
-			bpoff := uint64(14)
-			lroff := uint64(15)
-			if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {
-				// In Go 1.19 (specifically eee6f9f82) the order registers are saved was changed.
-				bpoff = 22
-				lroff = 23
-			}
-			newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
-			newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
-			newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
-			if it.regs.Reg(it.regs.BPRegNum) != nil {
-				it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
-			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
-				it.regs.AddReg(it.regs.BPRegNum, reg)
-			}
-			it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
-			it.pc = newlr
-			return true
-		default:
-			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
-				// The runtime switches to the system stack in multiple places.
-				// This usually happens through a call to runtime.systemstack but there
-				// are functions that switch to the system stack manually (for example
-				// runtime.morestack).
-				// Since we are only interested in printing the system stack for cgo
-				// calls we switch directly to the goroutine stack if we detect that the
-				// function at the top of the stack is a runtime function.
-				it.switchToGoroutineStack()
-				return true
-			}
 		}
 	}
 
@@ -198,26 +237,32 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 	}
 	switch fn.Name {
 	case "runtime.asmcgocall":
-		if !it.systemstack {
-			return false
-		}
+		/*
+			if !it.systemstack {
+				return false
+			}
 
-		// This function is called by a goroutine to execute a C function and
-		// switches from the goroutine stack to the system stack.
-		// Since we are unwinding the stack from callee to caller we have to switch
-		// from the system stack to the goroutine stack.
-		off, _ := readIntRaw(it.mem, uint64(callFrameRegs.SP()+arm64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
-		oldsp := callFrameRegs.SP()
-		newsp := uint64(int64(it.stackhi) - off)
+			// This function is called by a goroutine to execute a C function and
+			// switches from the goroutine stack to the system stack.
+			// Since we are unwinding the stack from callee to caller we have to switch
+			// from the system stack to the goroutine stack.
+			off, _ := readIntRaw(it.mem, uint64(callFrameRegs.SP()+arm64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
+			oldsp := callFrameRegs.SP()
+			newsp := uint64(int64(it.stackhi) - off)
+			// if off > 0x4000040000 {
+			// newsp = uint64(off)
+			// }
+			fmt.Printf("it.frame.Ret ::: oldsp: %#v newsp: %#v, it.stackhi: %#v, off: %#v\n", oldsp, newsp, it.stackhi, uint64(off))
 
-		// runtime.asmcgocall can also be called from inside the system stack,
-		// in that case no stack switch actually happens
-		if newsp == oldsp {
+			// runtime.asmcgocall can also be called from inside the system stack,
+			// in that case no stack switch actually happens
+			if newsp == oldsp {
+				return false
+			}
+			it.systemstack = false
+			callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = uint64(int64(newsp))
 			return false
-		}
-		it.systemstack = false
-		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = uint64(int64(newsp))
-		return false
+		*/
 
 	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
 		// For a detailed description of how this works read the long comment at
