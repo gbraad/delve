@@ -212,6 +212,9 @@ func (it *stackIterator) Next() bool {
 
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
+	if it.frame.Current.Fn != nil {
+		fmt.Println("new frame:", it.frame.Current.Fn.Name)
+	}
 
 	if it.opts&StacktraceSimple == 0 {
 		if it.bi.Arch.switchStack(it, &callFrameRegs) {
@@ -408,7 +411,14 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 
 	callimage := it.bi.PCToImage(it.pc)
 
-	callFrameRegs = op.DwarfRegisters{StaticBase: callimage.StaticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum, LRRegNum: it.regs.LRRegNum}
+	callFrameRegs = op.DwarfRegisters{
+		StaticBase: callimage.StaticBase,
+		ByteOrder:  it.regs.ByteOrder,
+		PCRegNum:   it.regs.PCRegNum,
+		SPRegNum:   it.regs.SPRegNum,
+		BPRegNum:   it.regs.BPRegNum,
+		LRRegNum:   it.regs.LRRegNum,
+	}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,
@@ -442,7 +452,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
-	// fmt.Printf("advance regs: it.pc: %#x ret: %#x retaddr: %x\n", it.pc, ret, retaddr)
+	fmt.Printf("advance regs: it.pc: %#x ret: %#x retaddr: %x\n", it.pc, ret, retaddr)
 	return callFrameRegs, ret, retaddr
 }
 
