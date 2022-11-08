@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"text/tabwriter"
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -3312,6 +3313,8 @@ func TestIssue844(t *testing.T) {
 }
 
 func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
+	w := tabwriter.NewWriter(os.Stderr, 0, 0, 3, ' ', 0)
+	fmt.Fprintf(w, "\n%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", "Call PC", "Frame Offset", "Frame Pointer Offset", "PC", "Return", "Function", "Location", "Top Defer", "Defers")
 	for j := range frames {
 		name := "?"
 		if frames[j].Current.Fn != nil {
@@ -3321,26 +3324,33 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
 		}
 
-		t.Logf("\t%#x %#x %#x %s at %s:%d\n",
-			frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(),
-			name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
+		topmostdefer := ""
 		if frames[j].TopmostDefer != nil {
 			_, _, fn := frames[j].TopmostDefer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			t.Logf("\t\ttopmost defer: %#x %s\n", frames[j].TopmostDefer.DwrapPC, fnname)
+			topmostdefer = fmt.Sprintf("%#x %s", frames[j].TopmostDefer.DwrapPC, fnname)
 		}
+
+		defers := ""
 		for deferIdx, _defer := range frames[j].Defers {
 			_, _, fn := _defer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			t.Logf("\t\t%d defer: %#x %s\n", deferIdx, _defer.DwrapPC, fnname)
+			defers += fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname)
 		}
+
+		frame := frames[j]
+		fmt.Fprintf(w, "%#x\t%#x\t%#x\t%#x\t%#x\t%s\t%s:%d\t%s\t%s\t\n",
+			frame.Call.PC, frame.FrameOffset(), frame.FramePointerOffset(), frame.Current.PC, frame.Ret,
+			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers)
+
 	}
+	w.Flush()
 }
 
 // stacktraceCheck checks that all the functions listed in tc appear in

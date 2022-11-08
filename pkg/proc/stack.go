@@ -212,12 +212,10 @@ func (it *stackIterator) Next() bool {
 
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
-	if it.frame.Current.Fn != nil {
-		fmt.Println("new frame:", it.frame.Current.Fn.Name)
-	}
 
 	if it.opts&StacktraceSimple == 0 {
 		if it.bi.Arch.switchStack(it, &callFrameRegs) {
+			// fmt.Println("+++SWITCH STACK+++")
 			return true
 		}
 	}
@@ -227,7 +225,6 @@ func (it *stackIterator) Next() bool {
 		return true
 	}
 
-	// fmt.Printf("it.frame.Ret: %#v\n", it.frame.Ret)
 	it.top = false
 	it.pc = it.frame.Ret
 	it.regs = callFrameRegs
@@ -452,7 +449,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
-	fmt.Printf("advance regs: it.pc: %#x ret: %#x retaddr: %x\n", it.pc, ret, retaddr)
+	// fmt.Printf("advance regs: it.pc: %#x ret: %#x retaddr: %x\n", it.pc, ret, retaddr)
 	return callFrameRegs, ret, retaddr
 }
 
@@ -469,6 +466,7 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 		reg := *it.regs.Reg(regnum)
 		return &reg, nil
 	case frame.RuleOffset:
+		// fmt.Printf("RuleOffset(r%d): %x = %x\n", regnum, rule.Offset, cfa+rule.Offset)
 		return it.readRegisterAt(regnum, uint64(cfa+rule.Offset))
 	case frame.RuleValOffset:
 		return op.DwarfRegisterFromUint64(uint64(cfa + rule.Offset)), nil
