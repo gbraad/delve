@@ -198,6 +198,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		it.pc = frameOnSystemStack.Ret
 		it.regs = callFrameRegs
 		it.systemstack = true
+
 		return true
 
 	case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
