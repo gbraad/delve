@@ -179,7 +179,6 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		// switch from the system stack back into the goroutine stack
 		// Since we are going backwards on the stack here we see the transition
 		// as goroutine stack -> system stack.
-
 		if it.top || it.systemstack {
 			return false
 		}

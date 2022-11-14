@@ -191,6 +191,7 @@ type stackIterator struct {
 
 	g                  *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
 	g0_sched_sp        uint64 // value of g0.sched.sp (see comments around its use)
+	g0_sched_lr        uint64 // value of g0.sched.sp (see comments around its use)
 	g0_sched_sp_loaded bool   // g0_sched_sp was loaded from g0
 
 	opts StacktraceOptions
@@ -526,6 +527,7 @@ func (it *stackIterator) loadG0SchedSP() {
 				g0, _ := g0var.parseG()
 				if g0 != nil {
 					it.g0_sched_sp = g0.SP
+					it.g0_sched_lr = g0.LR
 				}
 			}
 		}

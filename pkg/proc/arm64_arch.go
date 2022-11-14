@@ -9,6 +9,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
@@ -184,6 +185,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(it.regs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
 		it.top = false
 		callFrameRegs, ret, retaddr := it.advanceRegs()
+		fmt.Printf("RET: %#x %#x", ret, retaddr)
 		frameOnSystemStack := it.newStackframe(ret, retaddr)
 		it.pc = frameOnSystemStack.Ret
 		it.regs = callFrameRegs
@@ -225,29 +227,30 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		// Look for "top of stack" functions.
 		it.atend = true
 		return true
-	// case "crosscall2":
-	// 	// The offsets get from runtime/cgo/asm_arm64.s:10
-	// 	bpoff := uint64(14)
-	// 	lroff := uint64(15)
-	// 	if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {
-	// 		// In Go 1.19 (specifically eee6f9f82) the order registers are saved was changed.
-	// 		bpoff = 22
-	// 		lroff = 23
-	// 	}
-	// 	newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
-	// 	newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
-	// 	newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
-	// 	// if it.regs.Reg(it.regs.BPRegNum) != nil {
-	// 	it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
-	// 	// } else {
-	// 	// reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
-	// 	// it.regs.AddReg(it.regs.BPRegNum, reg)
-	// 	// }
-	// 	it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
-	// 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
-	// 	// it.pc = newlr
-	// 	// it.frame.Ret = newlr
-	// 	return true
+
+	case "crosscall2":
+		// The offsets get from runtime/cgo/asm_arm64.s:10
+		bpoff := uint64(14)
+		lroff := uint64(15)
+		if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {
+			// In Go 1.19 (specifically eee6f9f82) the order registers are saved was changed.
+			bpoff = 22
+			lroff = 23
+		}
+		newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
+		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
+		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
+		// if it.regs.Reg(it.regs.BPRegNum) != nil {
+		it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
+		// } else {
+		// reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
+		// it.regs.AddReg(it.regs.BPRegNum, reg)
+		// }
+		it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+		it.pc = newlr
+		// it.frame.Ret = newlr
+		return true
 
 	default:
 		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
