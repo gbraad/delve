@@ -82,17 +82,17 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: regnum.ARM64_LR,
+			RetAddrReg: regnum.ARM64_PC,
 			Regs: map[uint64]frame.DWRule{
-				regnum.ARM64_PC: frame.DWRule{
+				regnum.ARM64_PC: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-a.PtrSize()),
 				},
-				regnum.ARM64_BP: frame.DWRule{
+				regnum.ARM64_BP: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * a.PtrSize()),
 				},
-				regnum.ARM64_SP: frame.DWRule{
+				regnum.ARM64_SP: {
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},
@@ -103,6 +103,18 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 				Offset: int64(2 * a.PtrSize()),
 			},
 		}
+	}
+
+	if a.crosscall2fn == nil {
+		a.crosscall2fn = bi.LookupFunc["crosscall2"]
+	}
+
+	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
+		rule := fctxt.CFA
+		if rule.Offset == crosscall2SPOffsetBad {
+			rule.Offset += crosscall2SPOffset
+		}
+		fctxt.CFA = rule
 	}
 
 	// We assume that RBP is the frame pointer and we want to keep it updated,
