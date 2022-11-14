@@ -386,7 +386,6 @@ func offsetextendedsf(frame *FrameContext) {
 		offset, _ = util.DecodeSLEB128(frame.buf)
 	)
 
-	// fmt.Printf("reg: %d alignment: %#x offset: %#v total: %#v\n", reg, frame.dataAlignment, offset, offset*frame.dataAlignment)
 	frame.Regs[reg] = DWRule{Offset: offset * frame.dataAlignment, Rule: RuleOffset}
 }
 

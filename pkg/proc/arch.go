@@ -152,5 +152,4 @@ const (
 	crosscall2SPOffsetBad          = 0x8
 	crosscall2SPOffsetWindowsAMD64 = 0x118
 	crosscall2SPOffset             = 0x58
-	crosscall2SPOffsetArm          = 184
 )

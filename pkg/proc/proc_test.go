@@ -3357,7 +3357,6 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 // frames in the same order.
 // Checks that all the functions in tc starting with "C." or with "!" are in
 // a systemstack frame.
-// Also checks that PC and return values are what we expect.
 // Returns a slice m where m[i] is the index in frames of the function tc[i]
 // or nil if any check fails.
 func stacktraceCheck(t *testing.T, tc []string, frames []proc.Stackframe) []int {
