@@ -159,7 +159,6 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		}
 		return false
 	}
-	// fmt.Println("current function:", it.frame.Current.Fn.Name)
 	switch it.frame.Current.Fn.Name {
 	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
 		// For a detailed description of how this works read the long comment at
@@ -185,7 +184,6 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(it.regs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
 		it.top = false
 		callFrameRegs, ret, retaddr := it.advanceRegs()
-		// fmt.Printf("RET: %#x %#x", ret, retaddr)
 		frameOnSystemStack := it.newStackframe(ret, retaddr)
 		it.pc = frameOnSystemStack.Ret
 		it.regs = callFrameRegs
@@ -213,13 +211,13 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		if it.regs.SP() == oldsp {
 			return false
 		}
-		// TODO(derekparker): why is newsp incorrect here?
-		// fmt.Printf("curfn ::: oldsp: %#v newsp: %#v, it.stackhi: %#v, off: %#v\n",
-		// 	oldsp, newsp, it.stackhi, uint64(off))
 
-		// it.top = false
-		// it.systemstack = false
-		it.switchToGoroutineStack()
+		it.top = false
+		it.systemstack = false
+		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
+		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		it.pc = it.frame.Ret
+		// it.switchToGoroutineStack()
 
 		return true
 
@@ -240,12 +238,12 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		// newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
 		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
 		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
-		// if it.regs.Reg(it.regs.BPRegNum) != nil {
-		it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
-		// } else {
-		// reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
-		// it.regs.AddReg(it.regs.BPRegNum, reg)
-		// }
+		if it.regs.Reg(it.regs.BPRegNum) != nil {
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
+		} else {
+			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
+			it.regs.AddReg(it.regs.BPRegNum, reg)
+		}
 		// it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
 		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newbp)
 		it.pc = newlr
@@ -284,8 +282,9 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.switchToGoroutineStack()
 			return true
 		}
+
+		return false
 	}
-	return false
 }
 
 func arm64RegSize(regnum uint64) int {
