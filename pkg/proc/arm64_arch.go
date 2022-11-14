@@ -185,7 +185,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(it.regs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
 		it.top = false
 		callFrameRegs, ret, retaddr := it.advanceRegs()
-		fmt.Printf("RET: %#x %#x", ret, retaddr)
+		// fmt.Printf("RET: %#x %#x", ret, retaddr)
 		frameOnSystemStack := it.newStackframe(ret, retaddr)
 		it.pc = frameOnSystemStack.Ret
 		it.regs = callFrameRegs
@@ -237,7 +237,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			bpoff = 22
 			lroff = 23
 		}
-		newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
+		// newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
 		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
 		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
 		// if it.regs.Reg(it.regs.BPRegNum) != nil {
@@ -246,10 +246,30 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		// reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
 		// it.regs.AddReg(it.regs.BPRegNum, reg)
 		// }
-		it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
-		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+		// it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newbp)
 		it.pc = newlr
 		// it.frame.Ret = newlr
+		return true
+
+	case "runtime.mstart":
+		// Calls to runtime.systemstack will switch to the systemstack then:
+		// 1. alter the goroutine stack so that it looks like systemstack_switch
+		//    was called
+		// 2. alter the system stack so that it looks like the bottom-most frame
+		//    belongs to runtime.mstart
+		// If we find a runtime.mstart frame on the system stack of a goroutine
+		// parked on runtime.systemstack_switch we assume runtime.systemstack was
+		// called and continue tracing from the parked position.
+
+		if it.top || !it.systemstack || it.g == nil {
+			return false
+		}
+		if fn := it.bi.PCToFunc(it.g.PC); fn == nil || fn.Name != "runtime.systemstack_switch" {
+			return false
+		}
+
+		it.switchToGoroutineStack()
 		return true
 
 	default:
