@@ -105,26 +105,6 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		}
 	}
 
-	if a.crosscall2fn == nil {
-		a.crosscall2fn = bi.LookupFunc["crosscall2"]
-	}
-
-	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
-		rule := fctxt.CFA
-		rule.Offset = crosscall2SPOffsetArm
-		// fmt.Printf("crosscall2fn: %#v", rule.Offset)
-		// if rule.Offset == crosscall2SPOffsetBad {
-		// 	panic("bad crosscall2 frame")
-		// 	switch bi.GOOS {
-		// 	case "windows":
-		// 		rule.Offset += crosscall2SPOffsetWindowsAMD64
-		// 	default:
-		// 		rule.Offset += crosscall2SPOffsetArm
-		// 	}
-		// }
-		fctxt.CFA = rule
-	}
-
 	// We assume that RBP is the frame pointer and we want to keep it updated,
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
@@ -143,7 +123,6 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 			Offset: 0,
 		}
 	}
-	// fmt.Println("LR rule offset:", fctxt.Regs[regnum.ARM64_LR].Offset)
 
 	return fctxt
 }
@@ -214,10 +193,10 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 
 		it.top = false
 		it.systemstack = false
+		// The return value is stored in the LR register which is saved at 24(SP).
 		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
 		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
 		it.pc = it.frame.Ret
-		// it.switchToGoroutineStack()
 
 		return true
 
@@ -235,7 +214,6 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			bpoff = 22
 			lroff = 23
 		}
-		// newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
 		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
 		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
 		if it.regs.Reg(it.regs.BPRegNum) != nil {
@@ -244,10 +222,8 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
 			it.regs.AddReg(it.regs.BPRegNum, reg)
 		}
-		// it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
 		it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newbp)
 		it.pc = newlr
-		// it.frame.Ret = newlr
 		return true
 
 	case "runtime.mstart":
