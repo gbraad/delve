@@ -3368,7 +3368,7 @@ func stacktraceCheck(t *testing.T, tc []string, frames []proc.Stackframe) []int 
 		frame1 := frames[i]
 		frame2 := frames[i+1]
 
-		if frame1.Ret != frame2.Current.PC {
+		if frame1.Ret != frame2.Call.PC {
 			t.Fatalf("frame %d return value is %x, expected %x", i, frame1.Ret, frame2.Call.PC)
 			return nil
 		}
