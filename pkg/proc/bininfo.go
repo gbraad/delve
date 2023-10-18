@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"debug/dwarf"
 	"debug/elf"
-	"debug/gosym"
+//	"debug/gosym"
+	"github.com/go-delve/delve/pkg/gosym"
 	"debug/macho"
 	"debug/pe"
 	"encoding/binary"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	//"runtime"
 
 	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -1407,6 +1409,19 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	return sepFile, elfFile, nil
 }
 
+func lookupSymbol(f *elf.File, name string) *elf.Symbol {
+        syms, err := f.Symbols()
+        if err != nil {
+                return nil
+        }
+        for _, s := range syms {
+                if s.Name == name {
+                        return &s
+                }
+        }
+        return nil
+}
+
 // loadBinaryInfoElf specifically loads information from an ELF binary.
 func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
@@ -1460,7 +1475,39 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.symTable = symTable
+			   fun := symTable.LookupFunc("main.main")
+		        /*   goFunc := lookupSymbol(elfFile, gosym.FuncSymName(runtime.Version()))
+			   if goFunc == nil {
+				   fmt.Errorf("goFunc is nil")
+			   }
+		        fmt.Printf("gofunc value %p\n", goFunc)
+			*/
+			   prog := gosym.ProgContainingFunc(*fun,elfFile)
+		        //fmt.Printf("gofunc value %p\n", goFunc)
+      			  //got, err := symTable.GetInlineTree(fun, goFunc, prog.Vaddr, prog.ReaderAt)
+      			  got, err := symTable.GetInlineTree(fun, fun.Sym, prog.Vaddr, prog.ReaderAt)
+        			if err != nil {
+                			fmt.Errorf("error err")
+       				 }
+        			if got == nil {
+					fmt.Errorf("error got")
+       				 }
+ 				for _,ic := range got {
+ 					fmt.Printf("got elements funcid %d name %s parent pc %d\n",ic.FuncID, ic.Name, ic.ParentPC)
+ 				}
+
 			for _, f := range image.symTable.Funcs {
+				/*
+				prog := gosym.ProgContainingFunc(f,elfFile)
+ 				it, err := symTable.GetInlineTree(&f,f.Sym, prog.Vaddr, prog.ReaderAt)
+ 				if err != nil {
+ 					fmt.Printf("get inline tree returned error\n")
+                         		return err
+                 		}
+ 				for _,ic := range it {
+ 					fmt.Printf("it elements funcid %d name %s parent pc %d\n",ic.FuncID, ic.Name, ic.ParentPC)
+ 				}
+*/
 				cu := &compileUnit{}
 				cu.image = image
 				fn := Function{Name: f.Name, Entry: f.Entry + image.StaticBase, End: f.End + image.StaticBase, cu: cu}

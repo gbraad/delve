@@ -2,7 +2,8 @@ package proc
 
 import (
 	"debug/elf"
-	"debug/gosym"
+//	"debug/gosym"
+	"github.com/go-delve/delve/pkg/gosym"
 	"debug/macho"
 	"fmt"
 )
@@ -12,6 +13,15 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, error) {
 	sectionLabel := ".gopclntab"
 
 	section := exe.Section(sectionLabel)
+	s:=exe.Section(".gosymtab")
+ 	if s == nil {
+		fmt.Errorf("no .gosymtab section")
+                //t.Skip("no .gosymtab section")
+        }
+        symdat, err := s.Data()
+
+
+
 	if section == nil {
 		// binary may be built with -pie
 		sectionLabel = ".data.rel.ro.gopclntab"
@@ -27,7 +37,8 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, error) {
 
 	addr := exe.Section(".text").Addr
 	lineTable := gosym.NewLineTable(tableData, addr)
-	symTable, err := gosym.NewTable([]byte{}, lineTable)
+//	symTable, err := gosym.NewTable([]byte{}, lineTable)
+	symTable, err := gosym.NewTable(symdat, lineTable)
 	if err != nil {
 		return nil, fmt.Errorf("could not create symbol table from  %s ", path)
 	}
