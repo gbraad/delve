@@ -5,15 +5,17 @@
 // and line number tables embedded in Go binaries generated
 // by the gc compilers.
 package gosym
+
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
-	"debug/elf"
-	"io"
 )
+
 /*
  * Symbols
  */
@@ -24,11 +26,13 @@ type Sym struct {
 	Name   string
 	GoType uint64
 	// If this symbol is a function symbol, the corresponding Func
-	Func *Func
+	Func      *Func
 	goVersion version
 }
+
 // Static reports whether this symbol is static (not visible outside its file).
 func (s *Sym) Static() bool { return s.Type >= 'a' }
+
 // nameWithoutInst returns s.Name if s.Name has no brackets (does not reference an
 // instantiated type, function, or method). If s.Name contains brackets, then it
 // returns s.Name with all the contents between (and including) the outermost left
@@ -71,6 +75,7 @@ func (s *Sym) PackageName() string {
 	}
 	return ""
 }
+
 // ReceiverName returns the receiver type name of this symbol,
 // or the empty string if there is none.  A receiver name is only detected in
 // the case that s.Name is fully-specified with a package name.
@@ -97,6 +102,7 @@ func (s *Sym) ReceiverName() string {
 	r = strings.LastIndex(s.Name[pathend:], ".")
 	return s.Name[pathend+l+1 : pathend+r]
 }
+
 // BaseName returns the symbol name without the package or receiver name.
 func (s *Sym) BaseName() string {
 	name := s.nameWithoutInst()
@@ -115,6 +121,7 @@ func (s *Sym) BaseName() string {
 	}
 	return s.Name
 }
+
 // A Func collects information about a single function.
 type Func struct {
 	Entry uint64
@@ -129,23 +136,23 @@ type Func struct {
 	inlTree
 }
 
-func (T *Table) GetInlineTree(f* Func, s *Sym, baseaddr uint64, progReader io.ReaderAt) ([]InlinedCall, error) {
-//func (T *Table) GetInlineTree(f* Func, s *elf.Symbol, baseaddr uint64, progReader io.ReaderAt) ([]InlinedCall, error) {
+func (T *Table) GetInlineTree(f *Func, s, baseaddr uint64, progReader io.ReaderAt) ([]InlinedCall, error) {
+	//func (T *Table) GetInlineTree(f* Func, s *elf.Symbol, baseaddr uint64, progReader io.ReaderAt) ([]InlinedCall, error) {
 	//strver := fmt.Sprint(s.goVersion)
 	//goFuncValue := FuncSymName(strver)
-	//return T.go12line.InlineTree(f,goFuncValue,baseaddr,progReader) 
-	return T.go12line.InlineTree(f,s.Value,baseaddr,progReader) 
+	//return T.go12line.InlineTree(f,goFuncValue,baseaddr,progReader)
+	return T.go12line.InlineTree(f, s, baseaddr, progReader)
 
 }
 func ProgContainingFunc(f Func, elfFile *elf.File) *elf.Prog {
-        for _, p := range elfFile.Progs {
-                //if f.Entry >= p.Vaddr && f.Entry < p.Vaddr+p.Filesz {
-		fmt.Printf("entry %d symval %d\n", f.Entry, f.Sym.Value)
-                if f.Sym.Value >= p.Vaddr && f.Sym.Value < p.Vaddr+p.Filesz {
-                        return p
-                }
-        }
-        return nil
+	for _, p := range elfFile.Progs {
+		//if f.Entry >= p.Vaddr && f.Entry < p.Vaddr+p.Filesz {
+		//fmt.Printf("entry %d symval %d\n", f.Entry, f.Sym.Value)
+		if f.Sym.Value >= p.Vaddr && f.Sym.Value < p.Vaddr+p.Filesz {
+			return p
+		}
+	}
+	return nil
 }
 
 // An Obj represents a collection of functions in a symbol table.
@@ -168,6 +175,7 @@ type Obj struct {
 	// Use the keys of Table.Files to obtain a list of source files.
 	Paths []Sym // meta
 }
+
 /*
  * Symbol tables
  */
@@ -175,11 +183,11 @@ type Obj struct {
 // symbols decoded from the program and provides methods to translate
 // between symbols, names, and addresses.
 type Table struct {
-	Syms  []Sym // nil for Go 1.3 and later binaries
-	Funcs []Func
-	Files map[string]*Obj // for Go 1.2 and later all files map to one Obj
-	Objs  []Obj           // for Go 1.2 and later only one Obj in slice
-	go12line *LineTable // Go 1.2 line number table
+	Syms     []Sym // nil for Go 1.3 and later binaries
+	Funcs    []Func
+	Files    map[string]*Obj // for Go 1.2 and later all files map to one Obj
+	Objs     []Obj           // for Go 1.2 and later only one Obj in slice
+	go12line *LineTable      // Go 1.2 line number table
 }
 type sym struct {
 	value  uint64
@@ -187,11 +195,13 @@ type sym struct {
 	typ    byte
 	name   []byte
 }
+
 var (
 	littleEndianSymtab    = []byte{0xFD, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00}
 	bigEndianSymtab       = []byte{0xFF, 0xFF, 0xFF, 0xFD, 0x00, 0x00, 0x00}
 	oldLittleEndianSymtab = []byte{0xFE, 0xFF, 0xFF, 0xFF, 0x00, 0x00}
 )
+
 func walksymtab(data []byte, fn func(sym) error) error {
 	if len(data) == 0 { // missing symtab is okay
 		return nil
@@ -336,6 +346,7 @@ func walksymtab(data []byte, fn func(sym) error) error {
 	}
 	return nil
 }
+
 // NewTable decodes the Go symbol table (the ".gosymtab" section in ELF),
 // returning an in-memory representation.
 // Starting with Go 1.3, the Go symbol table no longer includes symbol data.
@@ -526,6 +537,7 @@ func NewTable(symtab []byte, pcln *LineTable) (*Table, error) {
 	}
 	return &t, nil
 }
+
 // PCToFunc returns the function containing the program counter pc,
 // or nil if there is no such function.
 func (t *Table) PCToFunc(pc uint64) *Func {
@@ -544,6 +556,7 @@ func (t *Table) PCToFunc(pc uint64) *Func {
 	}
 	return nil
 }
+
 // PCToLine looks up line number information for a program counter.
 // If there is no information, it returns fn == nil.
 func (t *Table) PCToLine(pc uint64) (file string, line int, fn *Func) {
@@ -558,6 +571,7 @@ func (t *Table) PCToLine(pc uint64) (file string, line int, fn *Func) {
 	}
 	return
 }
+
 // LineToPC looks up the first program counter on the given line in
 // the named file. It returns UnknownPathError or UnknownLineError if
 // there is an error looking up this line.
@@ -586,6 +600,7 @@ func (t *Table) LineToPC(file string, line int) (pc uint64, fn *Func, err error)
 	}
 	return 0, nil, &UnknownLineError{file, line}
 }
+
 // LookupSym returns the text, data, or bss symbol with the given name,
 // or nil if no such symbol is found.
 func (t *Table) LookupSym(name string) *Sym {
@@ -601,6 +616,7 @@ func (t *Table) LookupSym(name string) *Sym {
 	}
 	return nil
 }
+
 // LookupFunc returns the text, data, or bss symbol with the given name,
 // or nil if no such symbol is found.
 func (t *Table) LookupFunc(name string) *Func {
@@ -612,6 +628,7 @@ func (t *Table) LookupFunc(name string) *Func {
 	}
 	return nil
 }
+
 // SymByAddr returns the text, data, or bss symbol starting at the given address.
 func (t *Table) SymByAddr(addr uint64) *Sym {
 	for i := range t.Syms {
@@ -625,6 +642,7 @@ func (t *Table) SymByAddr(addr uint64) *Sym {
 	}
 	return nil
 }
+
 /*
  * Object files
  */
@@ -706,13 +724,16 @@ func (o *Obj) alineFromLine(path string, line int) (int, error) {
 	}
 	return 0, UnknownFileError(path)
 }
+
 /*
  * Errors
  */
 // UnknownFileError represents a failure to find the specific file in
 // the symbol table.
 type UnknownFileError string
+
 func (e UnknownFileError) Error() string { return "unknown file: " + string(e) }
+
 // UnknownLineError represents a failure to map a line to a program
 // counter, either because the line is beyond the bounds of the file
 // or because there is no code on the given line.
@@ -720,9 +741,11 @@ type UnknownLineError struct {
 	File string
 	Line int
 }
+
 func (e *UnknownLineError) Error() string {
 	return "no code at " + e.File + ":" + strconv.Itoa(e.Line)
 }
+
 // DecodingError represents an error during the decoding of
 // the symbol table.
 type DecodingError struct {
@@ -730,6 +753,7 @@ type DecodingError struct {
 	msg string
 	val int
 }
+
 func (e *DecodingError) Error() string {
 	msg := e.msg
 	//if e.val != nil {

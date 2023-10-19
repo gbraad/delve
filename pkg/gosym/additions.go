@@ -3,19 +3,20 @@
 // license that can be found in the LICENSE file.
 
 package gosym
+
 import (
 	"encoding/binary"
-	"io"
-	"strings"
-	"regexp"
 	"fmt"
-
+	"io"
+	"regexp"
+	"strings"
 )
 
 const (
 	funcSymNameGo119Lower string = "go.func.*"
 	funcSymNameGo120      string = "go:func.*"
 )
+
 // Additions to the original package from cmd/internal/objabi/funcdata.go
 const (
 	pcdata_InlTreeIndex = 2
@@ -31,6 +32,7 @@ var (
 	// 5  the prerelease number
 	tagRegexp = regexp.MustCompile(`^go(\d+\.\d+)(\.\d+|)((beta|rc|-pre)(\d+))?$`)
 )
+
 // parsed returns the parsed form of a semantic version string.
 type parsed struct {
 	major      string
@@ -220,6 +222,7 @@ func isNum(v string) bool {
 	}
 	return i == len(v)
 }
+
 // MajorMinor returns the major.minor version prefix of the semantic version v.
 // For example, MajorMinor("v2.1.0") == "v2.1".
 // If v is an invalid semantic version string, MajorMinor returns the empty string.
@@ -312,6 +315,7 @@ func comparePrerelease(x, y string) int {
 		return +1
 	}
 }
+
 // Compare returns an integer comparing two versions according to
 // semantic version precedence.
 // The result will be 0 if v == w, -1 if v < w, or +1 if v > w.
@@ -348,7 +352,7 @@ func Compare(v, w string) int {
 // progReader is a ReaderAt positioned at the start of that region.
 func (t *LineTable) InlineTree(f *Func, goFuncValue, baseAddr uint64, progReader io.ReaderAt) ([]InlinedCall, error) {
 	if f.inlineTreeCount == 0 {
-		fmt.Printf("error inlTreeCount\n")
+		fmt.Printf("error inlTreeCount %s\n", f.Name)
 		return nil, nil
 	}
 	if f.inlineTreeOffset == ^uint32(0) {
@@ -357,23 +361,27 @@ func (t *LineTable) InlineTree(f *Func, goFuncValue, baseAddr uint64, progReader
 	}
 	var offset int64
 	if t.version >= ver118 {
-		fmt.Printf(" f %x go func value %d baseaddr %d inlTreeOff %d inltreecount %d\n", f, goFuncValue, baseAddr,uint64(f.inlineTreeOffset), uint64(f.inlineTreeCount))
+		fmt.Printf(" f %x go func value %d baseaddr %d inlTreeOff %d inltreecount %d\n", f, goFuncValue, baseAddr, uint64(f.inlineTreeOffset), uint64(f.inlineTreeCount))
 		offset = int64(goFuncValue - baseAddr + uint64(f.inlineTreeOffset))
+		//offset = int64(uint64(f.inlineTreeOffset) - baseAddr)
 		fmt.Printf("offset got %d\n", offset)
 	} else {
 		offset = int64(uint64(f.inlineTreeOffset) - baseAddr)
 		fmt.Printf("<v118 offset got %d\n", offset)
 	}
+	fmt.Println("inline tree offset:", f.inlineTreeOffset)
+	fmt.Println("final offset :::::", offset)
 	r := io.NewSectionReader(progReader, offset, 1<<32) // pick a size larger than we need
 	var ics []InlinedCall
 	for i := 0; i < f.inlineTreeCount; i++ {
+		fmt.Println("version", t.version, "ver120", ver120)
 		if t.version >= ver120 {
 			var ric rawInlinedCall120
 			if err := binary.Read(r, t.binary, &ric); err != nil {
-				fmt.Printf("error reading binary into ric\n")
+				fmt.Printf("error reading binary into ric: %v %d\n", err, r.Size())
 				return nil, err
 			}
-			fmt.Printf("nameOff got in inlineTree %d\n",uint32(ric.NameOff))
+			fmt.Printf("nameOff got in inlineTree %d\n", uint32(ric.NameOff))
 			ics = append(ics, InlinedCall{
 				FuncID:   ric.FuncID,
 				Name:     t.funcName(uint32(ric.NameOff)),
@@ -394,21 +402,22 @@ func (t *LineTable) InlineTree(f *Func, goFuncValue, baseAddr uint64, progReader
 	}
 	return ics, nil
 }
+
 // FuncSymName returns symbol name for Go functions used in binaries
 // based on Go version. Supported Go versions are 1.18 and greater.
 // If the go version is unreadable it assumes that it is a newer version
 // and returns the symbol name for go version 1.20 or greater.
 func FuncSymName(goVersion string) string {
-        // Support devel goX.Y...
-        v := strings.TrimPrefix(goVersion, "devel ")
-        v = GoTagToSemver(v)
-        mm := MajorMinor(v)
-        if Compare(mm, "v1.20") >= 0 || mm == "" {
-                return funcSymNameGo120
-        } else if Compare(mm, "v1.18") >= 0 {
-                return funcSymNameGo119Lower
-        }
-        return ""
+	// Support devel goX.Y...
+	v := strings.TrimPrefix(goVersion, "devel ")
+	v = GoTagToSemver(v)
+	mm := MajorMinor(v)
+	if Compare(mm, "v1.20") >= 0 || mm == "" {
+		return funcSymNameGo120
+	} else if Compare(mm, "v1.18") >= 0 {
+		return funcSymNameGo119Lower
+	}
+	return ""
 }
 
 func GetFuncSymName() string {
@@ -421,6 +430,7 @@ type InlinedCall struct {
 	Name     string // name of called function
 	ParentPC int32  // position of an instruction whose source position is the call site (offset from entry)
 }
+
 // rawInlinedCall112 is the encoding of entries in the FUNCDATA_InlTree table
 // from Go 1.12 through 1.19. It is equivalent to runtime.inlinedCall.
 type rawInlinedCall112 struct {
